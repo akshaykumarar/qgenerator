@@ -1,0 +1,21 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- /Users/akshaykumar/code/qgenerator/.venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/akshaykumar/code/qgenerator
+plugins: anyio-4.15.1
+collecting ... collected 6 items
+
+tests/test_procurement_engine.py::test_settings_multi_provider_dynamic PASSED [ 16%]
+tests/test_procurement_engine.py::test_dataset_generation PASSED         [ 33%]
+tests/test_procurement_engine.py::test_user_feedback_dynamic_pricing PASSED [ 50%]
+tests/test_procurement_engine.py::test_extraction_and_normalization PASSED [ 66%]
+tests/test_procurement_engine.py::test_comparison_matrix_and_optimization PASSED [ 83%]
+tests/test_procurement_engine.py::test_copilot_interrogation PASSED      [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/google/genai/types.py:42
+  /Users/akshaykumar/code/qgenerator/.venv/lib/python3.14/site-packages/google/genai/types.py:42: DeprecationWarning: '_UnionGenericAlias' is deprecated and slated for removal in Python 3.17
+    VersionedUnionType = Union[builtin_types.UnionType, _UnionGenericAlias]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+========================= 6 passed, 1 warning in 1.95s =========================
