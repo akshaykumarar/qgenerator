@@ -9,6 +9,8 @@ An enterprise B2B SaaS application for strategic procurement teams. Ingests unst
 1. **Autonomous 5-Vendor Multi-Format Generator**:
    - Generates realistic multi-format bid documents (Excel, Vector PDF, Word DOCX, Perspective-Distorted Phone Photo, and Raw USD Email).
    - Dynamic scenario / feedback prompt input (e.g. *"Increase carton prices by 15%"*, *"Apply 10% discount on tapes"*).
+   - **Zero-Latency In-Memory Caching & Instant Downloads**: Download any individual file directly or download the complete 5-vendor dataset as a ZIP bundle.
+   - **Auto-Archiving**: Automatically moves previous dataset runs into `vendor_dataset/archive/dataset_YYYYMMDD_HHMMSS/` upon generating a fresh set, while keeping datasets strictly out of git.
 2. **Multimodal Extraction & Normalization Engine**:
    - **Vendor 1 (Excel)**: Non-standard column headers, MOQ, lead times, and GST tax terms.
    - **Vendor 2 (PDF)**: Tabular parsing and buried footnote discount clause (*"5% Volume Discount if PO > 5,000 units"*).

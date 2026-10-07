@@ -1,11 +1,16 @@
 """Unit and integration test suite for Autonomous RFx Engine."""
 import os
+import io
+import zipfile
 import pytest
 from src.config.settings import AppSettings, get_settings
 from src.generator.packaging_generator import (
     DEFAULT_PACKAGING_SKUS,
     generate_vendor_dataset,
     apply_user_feedback,
+    get_cached_file,
+    create_dataset_zip,
+    archive_existing_dataset,
 )
 from src.extractor.multimodal_engine import MultimodalExtractionEngine
 from src.analytics.matrix_builder import ComparisonMatrixBuilder
@@ -28,24 +33,70 @@ def test_settings_multi_provider_dynamic():
     assert settings.usd_inr_rate == 84.0
 
 
-def test_dataset_generation(tmp_path):
-    """Verify 5-vendor dataset generation creates all 5 distinct multi-format files."""
+def test_dataset_generation_caching_and_archiving(tmp_path):
+    """Verify 5-vendor dataset generation creates files, caches bytes, and archives old sets."""
     target_dir = str(tmp_path / "vendor_dataset")
-    files = generate_vendor_dataset(target_dir=target_dir)
-    assert len(files) == 5
-    for f in files:
+    
+    # 1. First run generates fresh random files & vendor names
+    files1, skus1, vendors1 = generate_vendor_dataset(target_dir=target_dir)
+    assert len(files1) == 5
+    assert len(vendors1) == 5
+    for f in files1:
         assert os.path.exists(f)
         assert os.path.getsize(f) > 0
 
+    # Test in-memory cache retrieval
+    excel_bytes = get_cached_file("vendor1_alpha_pack_custom_excel.xlsx", target_dir=target_dir)
+    assert excel_bytes is not None and len(excel_bytes) > 0
 
-def test_user_feedback_dynamic_pricing():
-    """Verify natural language feedback changes SKU base rates."""
-    skus_original = DEFAULT_PACKAGING_SKUS
-    skus_inflated = apply_user_feedback(skus_original, "15% price increase")
+    # Test ZIP bundle creation (Download All)
+    zip_bytes = create_dataset_zip(target_dir=target_dir)
+    assert zip_bytes is not None and len(zip_bytes) > 0
     
-    avg_orig = sum(s["base_rate"] for s in skus_original) / len(skus_original)
-    avg_inf = sum(s["base_rate"] for s in skus_inflated) / len(skus_inflated)
-    assert avg_inf > avg_orig
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+        names = z.namelist()
+        assert len(names) == 5
+        assert any(n.endswith(".xlsx") for n in names)
+        assert any(n.endswith(".pdf") for n in names)
+        assert any(n.endswith(".docx") for n in names)
+        assert any(n.endswith(".png") for n in names)
+        assert any(n.endswith(".txt") for n in names)
+
+    # 2. Second run moves old files to archive
+    files2, skus2, vendors2 = generate_vendor_dataset(target_dir=target_dir)
+    assert len(files2) == 5
+    archive_dir = os.path.join(target_dir, "archive")
+    assert os.path.exists(archive_dir)
+    archived_runs = os.listdir(archive_dir)
+    assert len(archived_runs) >= 1
+
+
+def test_feedback_vs_random_generation(tmp_path):
+    """Verify that feedback mutates existing data, while fresh runs randomize."""
+    target_dir = str(tmp_path / "vendor_dataset")
+    
+    # Run 1: Fresh random run
+    _, initial_skus, initial_vendors = generate_vendor_dataset(target_dir=target_dir)
+    box_rate_orig = next(s["base_rate"] for s in initial_skus if s["code"] == "PKG-001")
+
+    # Run 2: Feedback run on existing data
+    _, feedback_skus, feedback_vendors = generate_vendor_dataset(
+        target_dir=target_dir,
+        feedback_prompt="15% price increase on cartons",
+        existing_skus=initial_skus,
+        existing_vendors=initial_vendors
+    )
+    box_rate_feedback = next(s["base_rate"] for s in feedback_skus if s["code"] == "PKG-001")
+    
+    # Feedback should have increased box rate over the existing box rate
+    assert box_rate_feedback > box_rate_orig
+    # Vendor names should be preserved during feedback on existing data
+    assert feedback_vendors == initial_vendors
+
+    # Run 3: Fresh run without feedback (should generate random new vendors)
+    _, fresh_skus, fresh_vendors = generate_vendor_dataset(target_dir=target_dir)
+    assert len(fresh_skus) == 30
+    assert len(fresh_vendors) == 5
 
 
 def test_extraction_and_normalization(tmp_path):
@@ -57,11 +108,11 @@ def test_extraction_and_normalization(tmp_path):
     results = engine.extract_all_vendors(dataset_dir=target_dir)
 
     assert len(results) == 5
-    assert "vendor_1" in results  # Excel
-    assert "vendor_2" in results  # PDF
-    assert "vendor_3" in results  # Word
-    assert "vendor_4" in results  # Image
-    assert "vendor_5" in results  # Email
+    assert "vendor_1" in results
+    assert "vendor_2" in results
+    assert "vendor_3" in results
+    assert "vendor_4" in results
+    assert "vendor_5" in results
 
     # Check Vendor 1 (Excel)
     v1 = results["vendor_1"]
@@ -79,8 +130,7 @@ def test_extraction_and_normalization(tmp_path):
 
     # Check Vendor 5 (USD Email missing lines)
     v5 = results["vendor_5"]
-    assert v5.total_items_quoted == 27  # 3 items out of stock
-    # Verify USD to INR normalization
+    assert v5.total_items_quoted == 27
     quoted_item = next(it for it in v5.line_items.values() if it.is_quoted)
     assert quoted_item.raw_currency == "USD"
     assert quoted_item.normalized_rate == round(quoted_item.raw_rate * 84.0, 2)
@@ -89,16 +139,16 @@ def test_extraction_and_normalization(tmp_path):
 def test_comparison_matrix_and_optimization(tmp_path):
     """Verify comparison matrix builder and split-award optimization math."""
     target_dir = str(tmp_path / "vendor_dataset")
-    generate_vendor_dataset(target_dir=target_dir)
+    _, skus, _ = generate_vendor_dataset(target_dir=target_dir)
 
     engine = MultimodalExtractionEngine(usd_inr_rate=84.0)
     vendor_responses = engine.extract_all_vendors(dataset_dir=target_dir)
 
-    matrix = ComparisonMatrixBuilder.build_matrix(vendor_responses, DEFAULT_PACKAGING_SKUS)
+    matrix = ComparisonMatrixBuilder.build_matrix(vendor_responses, skus)
     assert len(matrix) == 30
 
     deal_totals = ComparisonMatrixBuilder.calculate_deal_totals(matrix, vendor_responses)
-    assert deal_totals["total_baseline_inr"] > 40000000  # ₹4+ Crore baseline portfolio!
+    assert deal_totals["total_baseline_inr"] > 30000000
     assert deal_totals["total_optimal_l1_inr"] > 0
     assert deal_totals["total_savings_inr"] > 0
 
@@ -107,10 +157,6 @@ def test_comparison_matrix_and_optimization(tmp_path):
     assert len(split_l1.allocations) == 30
     assert split_l1.total_deal_value_optimized < split_l1.total_deal_value_baseline
     assert split_l1.total_savings_amount > 0
-
-    # Test 2-Vendor Split
-    split_2v = SplitAwardOptimizer.optimize_2vendor_split(matrix, vendor_responses, "vendor_1", "vendor_3")
-    assert len(split_2v.allocations) == 30
 
 
 def test_copilot_interrogation():

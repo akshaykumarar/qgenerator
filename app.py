@@ -10,6 +10,8 @@ from src.config.settings import get_settings
 from src.generator.packaging_generator import (
     DEFAULT_PACKAGING_SKUS,
     generate_vendor_dataset,
+    pick_random_vendors,
+    create_dataset_zip,
 )
 from src.extractor.multimodal_engine import MultimodalExtractionEngine
 from src.analytics.matrix_builder import ComparisonMatrixBuilder
@@ -18,6 +20,7 @@ from src.tools.llm_client import UnifiedProcurementLLM
 from src.ui.styles import SLATE_CSS, get_header_html
 from src.ui.components import (
     render_file_badges,
+    render_dataset_download_actions,
     render_kpi_cards,
     render_line_level_proof_drawer,
     render_spend_charts,
@@ -113,7 +116,6 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 dataset_dir = settings.dataset_dir
 if "vendor_data" not in st.session_state or "dataset_generated" not in st.session_state:
-    # Check if files already exist
     expected_files = [
         "vendor1_alpha_pack_custom_excel.xlsx",
         "vendor2_beta_box_clean_table.pdf",
@@ -122,10 +124,14 @@ if "vendor_data" not in st.session_state or "dataset_generated" not in st.sessio
         "vendor5_epsilon_global_raw_email.txt",
     ]
     all_exist = all(os.path.exists(os.path.join(dataset_dir, f)) for f in expected_files)
-    if not all_exist:
-        generate_vendor_dataset(target_dir=dataset_dir)
+    if not all_exist or "active_skus" not in st.session_state:
+        _, initial_skus, initial_vendors = generate_vendor_dataset(target_dir=dataset_dir)
+        st.session_state.active_skus = initial_skus
+        st.session_state.active_vendors = initial_vendors
+    else:
+        st.session_state.active_skus = DEFAULT_PACKAGING_SKUS
+        st.session_state.active_vendors = pick_random_vendors()
 
-    # Initialize extraction
     extractor = MultimodalExtractionEngine(
         api_key=custom_api_key,
         model=selected_model,
@@ -135,7 +141,7 @@ if "vendor_data" not in st.session_state or "dataset_generated" not in st.sessio
     st.session_state.dataset_generated = True
 
 # ---------------------------------------------------------------------------
-# 4. TOP HEADER BANNER
+# 4. TOP HEADER BANNER & GLOBAL DOWNLOAD ACTION
 # ---------------------------------------------------------------------------
 llm_client = UnifiedProcurementLLM(
     provider=selected_provider,
@@ -149,41 +155,66 @@ st.markdown(get_header_html(f"{selected_provider.upper()}: {selected_model}", is
 # ---------------------------------------------------------------------------
 # 5. DATASET GENERATION CONTROL PANEL (COLLAPSIBLE)
 # ---------------------------------------------------------------------------
-with st.expander("📦 5-Vendor Multi-Format Dataset Controls & Custom Scenario Generator", expanded=False):
+with st.expander("📦 5-Vendor Multi-Format Dataset Controls & Custom Scenario Generator", expanded=True):
     st.markdown("""
     Generate fresh synthetic RFx responses across 5 distinct unstructured file formats (Excel, PDF, Word, Angled Image, USD Email) 
     for the **30-SKU Packaging Consumables Catalog**.
     """)
 
-    col_input, col_btn = st.columns([3, 1])
+    col_input, col_btn = st.columns([3, 1.2])
     with col_input:
         feedback_prompt = st.text_input(
             "Custom Scenario / Feedback Prompt (Optional)",
-            placeholder="e.g., 'Increase carton prices by 15%', 'Apply 10% discount on tapes', 'Price surge in cushioning'",
+            placeholder="e.g., 'Increase carton prices by 15%', 'Apply 10% discount on tapes', 'Surge in box rates'",
             key="feedback_prompt_input"
         )
     with col_btn:
         st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-        trigger_gen = st.button("🚀 Generate Fresh 5-Vendor Dataset", type="primary", use_container_width=True)
+        btn_label = "⚡ Apply Feedback to Existing Data" if feedback_prompt.strip() else "🚀 Generate Fresh 5-Vendor Dataset"
+        trigger_gen = st.button(btn_label, type="primary", use_container_width=True)
 
     if trigger_gen:
         with st.spinner("Generating 5 multi-format vendor proposals and extracting data..."):
-            generate_vendor_dataset(target_dir=dataset_dir, feedback_prompt=feedback_prompt)
+            prior_skus = st.session_state.get("active_skus")
+            prior_vendors = st.session_state.get("active_vendors")
+
+            # If feedback is given AND prior data exists: mutate existing data.
+            # Otherwise (no feedback / no prior data): generate completely fresh random data & vendors.
+            _, new_skus, new_vendors = generate_vendor_dataset(
+                target_dir=dataset_dir,
+                feedback_prompt=feedback_prompt,
+                existing_skus=prior_skus if feedback_prompt.strip() else None,
+                existing_vendors=prior_vendors if feedback_prompt.strip() else None
+            )
+            st.session_state.active_skus = new_skus
+            st.session_state.active_vendors = new_vendors
+
             extractor = MultimodalExtractionEngine(
                 api_key=custom_api_key,
                 model=selected_model,
                 usd_inr_rate=usd_rate
             )
             st.session_state.vendor_data = extractor.extract_all_vendors(dataset_dir=dataset_dir)
-            st.success("Successfully generated and extracted all 5 vendor proposals!")
+            
+            if feedback_prompt.strip() and prior_skus:
+                st.success(f"✓ Modified existing dataset with feedback: '{feedback_prompt}' (Active SKUs updated)")
+            else:
+                st.success(f"✓ Generated fresh random dataset across 5 new vendor profiles: {', '.join(list(new_vendors.values())[:3])}...")
 
+    # Display live file badges with individual download buttons
     render_file_badges(dataset_dir=dataset_dir)
+    
+    st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
+    
+    # Prominent Download All Button with Icon
+    render_dataset_download_actions(dataset_dir=dataset_dir)
 
 # ---------------------------------------------------------------------------
 # 6. ANALYTICS & EXECUTIVE DEAL OVERVIEW
 # ---------------------------------------------------------------------------
 vendor_responses = st.session_state.vendor_data
-matrix_rows = ComparisonMatrixBuilder.build_matrix(vendor_responses, DEFAULT_PACKAGING_SKUS)
+active_skus = st.session_state.get("active_skus", DEFAULT_PACKAGING_SKUS)
+matrix_rows = ComparisonMatrixBuilder.build_matrix(vendor_responses, active_skus)
 deal_totals = ComparisonMatrixBuilder.calculate_deal_totals(matrix_rows, vendor_responses)
 split_summary = SplitAwardOptimizer.optimize_l1_split(matrix_rows, vendor_responses)
 
@@ -209,19 +240,17 @@ with tab1:
     st.caption("All unit rates converted to INR (₹) and normalized to standard catalog UOMs. Lowest rate per SKU is marked with 🏆.")
 
     filter_col1, filter_col2, filter_col3 = st.columns([1.5, 2, 1])
-    categories = ["All Categories"] + sorted(list({s["category"] for s in DEFAULT_PACKAGING_SKUS}))
+    categories = ["All Categories"] + sorted(list({s["category"] for s in active_skus}))
     with filter_col1:
         selected_cat = st.selectbox("Filter by Category", categories)
     with filter_col2:
         search_query = st.text_input("Search SKU Name or Code", placeholder="e.g. PKG-001 or Corrugated Box")
     with filter_col3:
         st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-        # Download Matrix CSV
         df_matrix = ComparisonMatrixBuilder.to_dataframe(matrix_rows, vendor_responses)
         csv_data = df_matrix.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Export Matrix CSV", data=csv_data, file_name="normalized_rfx_matrix.csv", mime="text/csv", use_container_width=True)
 
-    # Filter logic
     filtered_matrix = matrix_rows
     if selected_cat != "All Categories":
         filtered_matrix = [r for r in filtered_matrix if r.category == selected_cat]
@@ -241,7 +270,7 @@ with tab2:
     st.markdown("### 🔍 Line-Level Ground Truth Auditability & Document Inspector")
     st.caption("Audit trail verifying '₹4.2 Crore' enterprise procurement decisions. Click any SKU to inspect raw text extracts, sheet coordinates, and AI confidence scores.")
 
-    sku_options = [f"{s['code']} - {s['name']}" for s in DEFAULT_PACKAGING_SKUS]
+    sku_options = [f"{s['code']} - {s['name']}" for s in active_skus]
     selected_sku_str = st.selectbox("Select SKU to Inspect Ground Truth Proof:", sku_options)
     selected_sku_code = selected_sku_str.split(" - ")[0]
 
@@ -254,11 +283,13 @@ with tab3:
     st.markdown("### 📑 Commercial Terms, SLAs & Footnote Intelligence")
     st.caption("AI-extracted non-rate commercial variables that alter effective total cost of ownership (TCO).")
 
-    st.markdown("""
+    v2_resp = vendor_responses.get("vendor_2")
+    v2_name = v2_resp.vendor_name if v2_resp else "Vendor 2"
+    st.markdown(f"""
     <div class="footnote-alert">
-        <b>🚨 CRITICAL CLAUSE DETECTED in Vendor 2 (Beta Box & Container Ltd):</b><br>
+        <b>🚨 CRITICAL CLAUSE DETECTED in {v2_name}:</b><br>
         <i>"A 5% Volume Discount is applied to the Total PO Value if total order quantity exceeds 5,000 units across items."</i><br>
-        For this annual deal portfolio (>1,000,000 aggregate units), this footnote reduces Beta Box's effective landed cost by <b>₹ 1,84,000</b>.
+        For this annual deal portfolio (>1,000,000 aggregate units), this footnote reduces {v2_name}'s effective landed cost by <b>₹ 1,84,000</b>.
     </div>
     """, unsafe_allow_html=True)
 
@@ -286,10 +317,8 @@ with tab4:
     st.markdown("### 🤖 Strategic Split-Award Interrogation Copilot")
     st.caption("Simulate split-award scenarios, ask natural language negotiation questions, and optimize deal spend allocation.")
 
-    # Spend Charts
     render_spend_charts(split_summary)
 
-    # Optimization strategy selector
     st.markdown("#### 🎯 Split-Award Optimization Scenario Solver")
     c_strat1, c_strat2 = st.columns([2, 1])
     with c_strat1:
@@ -309,11 +338,9 @@ with tab4:
     Savings vs Baseline: **₹ {current_summary.total_savings_amount:,.2f} ({current_summary.total_savings_pct:.1f}%)**
     """)
 
-    # Interactive Chat Copilot
     st.markdown("---")
     st.markdown("#### 💬 Natural Language Deal Interrogation")
 
-    # Prompt chips for quick testing
     chip_cols = st.columns(3)
     with chip_cols[0]:
         if st.button("💡 Optimal split-award recommendation?"):
@@ -333,7 +360,6 @@ with tab4:
 
     if st.button("Submit Query", type="primary"):
         if user_query:
-            # Build matrix context for LLM
             context_snippet = json.dumps([
                 {
                     "sku": r.sku_code,

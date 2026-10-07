@@ -8,7 +8,8 @@ The Intelligent Procurement Assistant is an enterprise B2B SaaS web application 
 - **Configuration & Provider Settings**: [src/config/settings.py](file:///Users/akshaykumar/code/qgenerator/src/config/settings.py)
 - **Pydantic Data Models**: [src/models/schemas.py](file:///Users/akshaykumar/code/qgenerator/src/models/schemas.py)
 - **Multi-Provider LLM Client** (Gemini, OpenAI, OpenRouter, Ollama): [src/tools/llm_client.py](file:///Users/akshaykumar/code/qgenerator/src/tools/llm_client.py)
-- **Packaging Dataset Generator** (5 Formats): [src/generator/packaging_generator.py](file:///Users/akshaykumar/code/qgenerator/src/generator/packaging_generator.py)
+- **Packaging Dataset Generator** (5 Formats): [src/generator/packaging_generator.py](file:///Users/akshaykumar/code/qgenerator/src/generator/packaging_generator.py) (Includes in-memory zero-latency cache `_DATASET_CACHE`, auto-archiving to `vendor_dataset/archive/dataset_YYYYMMDD_HHMMSS/`, and single-click ZIP bundle generator `create_dataset_zip`).
+- **Git Protection**: `.gitignore` ensures `vendor_dataset/`, `archive/`, `*.zip`, `.env`, and virtual environment artifacts never enter version control.
 - **Multimodal Extraction Engine & Local Parsers**: [src/extractor/multimodal_engine.py](file:///Users/akshaykumar/code/qgenerator/src/extractor/multimodal_engine.py), [src/extractor/local_parsers.py](file:///Users/akshaykumar/code/qgenerator/src/extractor/local_parsers.py)
 - **Matrix Builder & Split-Award Optimizer**: [src/analytics/matrix_builder.py](file:///Users/akshaykumar/code/qgenerator/src/analytics/matrix_builder.py), [src/analytics/optimizer.py](file:///Users/akshaykumar/code/qgenerator/src/analytics/optimizer.py)
 - **UI Design System & Visual Proof Components**: [src/ui/styles.py](file:///Users/akshaykumar/code/qgenerator/src/ui/styles.py), [src/ui/components.py](file:///Users/akshaykumar/code/qgenerator/src/ui/components.py)

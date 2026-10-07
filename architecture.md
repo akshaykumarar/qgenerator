@@ -4,12 +4,15 @@
 
 ```mermaid
 flowchart TD
-    subgraph Data Generation ["Data Generation & Custom Scenarios"]
-        G[5-Vendor Packaging Generator] --> |Custom Feedback Prompt| D1[Vendor 1: Excel .xlsx]
+    subgraph Data Generation ["Data Generation, Caching & Archiving"]
+        G[5-Vendor Packaging Generator] --> |Auto-Archive Prior Runs| ARC[vendor_dataset/archive/timestamp/]
+        G --> |In-Memory Python Cache| MEM[_DATASET_CACHE Bytes]
+        G --> |Custom Feedback Prompt| D1[Vendor 1: Excel .xlsx]
         G --> D2[Vendor 2: Vector PDF .pdf]
         G --> D3[Vendor 3: Word .docx]
         G --> D4[Vendor 4: Angled Photo .png]
         G --> D5[Vendor 5: Raw USD Email .txt]
+        MEM --> DL[ZIP & Individual File Downloads]
     end
 
     subgraph Multimodal Extraction ["Multimodal Normalization & Ingestion"]

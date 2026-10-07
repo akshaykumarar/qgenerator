@@ -12,17 +12,61 @@ from src.models.schemas import (
     SplitAwardSummary,
     LineProof,
 )
-from src.generator.packaging_generator import DEFAULT_PACKAGING_SKUS
+from src.generator.packaging_generator import (
+    DEFAULT_PACKAGING_SKUS,
+    get_cached_file,
+    create_dataset_zip,
+)
 
 
 def render_file_badges(dataset_dir: str = "./vendor_dataset") -> None:
-    """Render file card badges for all generated vendor bid artifacts."""
+    """Render file card badges with live in-memory download buttons for all 5 generated artifacts."""
     files_meta = [
-        {"name": "vendor1_alpha_pack_custom_excel.xlsx", "vendor": "Vendor 1: Alpha Pack Solutions", "format": "Excel (.xlsx)", "type": "excel", "desc": "Custom column headers & GST footnotes"},
-        {"name": "vendor2_beta_box_clean_table.pdf", "vendor": "Vendor 2: Beta Box & Container Ltd", "format": "Vector PDF (.pdf)", "type": "pdf", "desc": "Tabular rate card & 5% volume footnote"},
-        {"name": "vendor3_gamma_packaging_prose.docx", "vendor": "Vendor 3: Gamma Packaging Works", "format": "Word (.docx)", "type": "word", "desc": "Embedded table & 100% warranty prose SLA"},
-        {"name": "vendor4_delta_angled_ratecard.png", "vendor": "Vendor 4: Delta Print & Pack", "format": "Angled Photo (.png)", "type": "image", "desc": "Smartphone snap with perspective skew"},
-        {"name": "vendor5_epsilon_global_raw_email.txt", "vendor": "Vendor 5: Epsilon Global Pte", "format": "Raw Email (.txt)", "type": "email", "desc": "USD currency rates (27/30 lines quoted)"},
+        {
+            "name": "vendor1_alpha_pack_custom_excel.xlsx",
+            "vendor": "Vendor 1: Alpha Pack",
+            "format": "Excel (.xlsx)",
+            "type": "excel",
+            "desc": "Custom headers & GST footnotes",
+            "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "label": "📥 Download Excel"
+        },
+        {
+            "name": "vendor2_beta_box_clean_table.pdf",
+            "vendor": "Vendor 2: Beta Box",
+            "format": "Vector PDF (.pdf)",
+            "type": "pdf",
+            "desc": "Tabular rate card & 5% footnote",
+            "mime": "application/pdf",
+            "label": "📥 Download PDF"
+        },
+        {
+            "name": "vendor3_gamma_packaging_prose.docx",
+            "vendor": "Vendor 3: Gamma Pack",
+            "format": "Word (.docx)",
+            "type": "word",
+            "desc": "Table & 100% warranty prose SLA",
+            "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "label": "📥 Download Word"
+        },
+        {
+            "name": "vendor4_delta_angled_ratecard.png",
+            "vendor": "Vendor 4: Delta Print",
+            "format": "Angled Photo (.png)",
+            "type": "image",
+            "desc": "Smartphone snap with perspective skew",
+            "mime": "image/png",
+            "label": "📥 Download Image"
+        },
+        {
+            "name": "vendor5_epsilon_global_raw_email.txt",
+            "vendor": "Vendor 5: Epsilon Global",
+            "format": "Raw Email (.txt)",
+            "type": "email",
+            "desc": "USD rates (27/30 lines quoted)",
+            "mime": "text/plain",
+            "label": "📥 Download Email"
+        },
     ]
 
     st.markdown('<div class="file-badge-grid">', unsafe_allow_html=True)
@@ -30,22 +74,56 @@ def render_file_badges(dataset_dir: str = "./vendor_dataset") -> None:
     
     for idx, (col, meta) in enumerate(zip(cols, files_meta)):
         fpath = os.path.join(dataset_dir, meta["name"])
-        exists = os.path.exists(fpath)
-        size_kb = round(os.path.getsize(fpath) / 1024, 1) if exists else 0
-        status_text = f"✓ Ready ({size_kb} KB)" if exists else "⚠️ Missing (Click Generate)"
+        file_bytes = get_cached_file(meta["name"], target_dir=dataset_dir)
+        exists = file_bytes is not None and len(file_bytes) > 0
+        size_kb = round(len(file_bytes) / 1024, 1) if exists else 0
+        status_text = f"✓ Ready ({size_kb} KB)" if exists else "⚠️ Missing"
         status_color = "#00A88F" if exists else "#D97706"
 
         with col:
             st.markdown(f"""
             <div class="file-badge-card {meta['type']}">
-                <div class="file-badge-info">
+                <div class="file-badge-info" style="width: 100%;">
                     <h5>{meta['vendor']}</h5>
                     <p><b>{meta['format']}</b> | <span style="color:{status_color};font-weight:600;">{status_text}</span></p>
                     <p style="color:#64748B;font-size:0.7rem;margin-top:2px;">{meta['desc']}</p>
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
+            if exists:
+                st.download_button(
+                    label=meta["label"],
+                    data=file_bytes,
+                    file_name=meta["name"],
+                    mime=meta["mime"],
+                    key=f"dl_btn_{idx}_{meta['name']}",
+                    use_container_width=True
+                )
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_dataset_download_actions(dataset_dir: str = "./vendor_dataset") -> None:
+    """Render full ZIP bundle download button and archive summary."""
+    zip_bytes = create_dataset_zip(target_dir=dataset_dir)
+    archive_dir = os.path.join(dataset_dir, "archive")
+    archive_count = len(os.listdir(archive_dir)) if os.path.exists(archive_dir) else 0
+
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        if zip_bytes and len(zip_bytes) > 0:
+            st.download_button(
+                label="📦 Download Complete 5-Vendor Dataset (ZIP Bundle)",
+                data=zip_bytes,
+                file_name="5_Vendor_Packaging_Dataset.zip",
+                mime="application/zip",
+                type="primary",
+                use_container_width=True,
+                help="Download all 5 multi-format files (Excel, PDF, Word, Angled Image, USD Email) in a single zip archive for product testing."
+            )
+    with c2:
+        if archive_count > 0:
+            st.caption(f"📁 **Auto-Archive Active**: {archive_count} prior datasets archived in cache.")
 
 
 def render_kpi_cards(deal_totals: Dict[str, Any], vendor_responses: Dict[str, VendorBidResponse]) -> None:
@@ -76,7 +154,6 @@ def render_kpi_cards(deal_totals: Dict[str, Any], vendor_responses: Dict[str, Ve
         """, unsafe_allow_html=True)
 
     with col3:
-        # Vendor with max quoted items
         v5_quoted = vendor_responses.get("vendor_5", None)
         v5_quoted_count = v5_quoted.total_items_quoted if v5_quoted else 27
         st.markdown(f"""
@@ -103,7 +180,6 @@ def render_line_level_proof_drawer(
     dataset_dir: str = "./vendor_dataset"
 ) -> None:
     """Render interactive line-level visual proof & ground truth inspection drawer."""
-    # Find SKU standard info
     sku_info = next((s for s in DEFAULT_PACKAGING_SKUS if s["code"] == selected_sku), None)
     if not sku_info:
         st.warning("Select a valid SKU code to inspect visual proof.")
@@ -155,10 +231,10 @@ def render_line_level_proof_drawer(
                 """, unsafe_allow_html=True)
 
                 if v_id == "vendor_4":
-                    img_path = os.path.join(dataset_dir, "vendor4_delta_angled_ratecard.png")
-                    if os.path.exists(img_path):
+                    img_bytes = get_cached_file("vendor4_delta_angled_ratecard.png", target_dir=dataset_dir)
+                    if img_bytes:
                         with st.expander("📷 View Angled Rate Card Snapshot"):
-                            st.image(img_path, caption="Vendor 4 Perspective Rate Card Image", use_container_width=True)
+                            st.image(img_bytes, caption="Vendor 4 Perspective Rate Card Image", use_container_width=True)
             else:
                 st.markdown(f"""
                 <div class="proof-box" style="border-left-color:#D9383A; background:#FFF5F5;">
@@ -183,7 +259,6 @@ def render_spend_charts(split_summary: SplitAwardSummary) -> None:
     c1, c2 = st.columns(2)
 
     with c1:
-        # Donut chart of Spend Distribution
         labels = list(split_summary.vendor_spend_distribution.keys())
         values = list(split_summary.vendor_spend_distribution.values())
 
@@ -199,7 +274,6 @@ def render_spend_charts(split_summary: SplitAwardSummary) -> None:
         st.plotly_chart(fig_spend, use_container_width=True)
 
     with c2:
-        # Bar chart of Lines Awarded per Vendor
         line_labels = list(split_summary.vendor_line_distribution.keys())
         line_vals = list(split_summary.vendor_line_distribution.values())
 

@@ -16,14 +16,17 @@ from src.generator.packaging_generator import DEFAULT_PACKAGING_SKUS
 
 
 def parse_vendor1_excel(file_path: str) -> VendorBidResponse:
-    """Parse Vendor 1 Excel workbook with custom headers and terms."""
+    """Parse Vendor 1 Excel workbook with custom headers and dynamic company title."""
     wb = openpyxl.load_workbook(file_path, data_only=True)
     ws = wb.active
     
     line_items: Dict[str, VendorLineItem] = {}
     commercial_notes: List[str] = []
     
-    # Headers start around row 5
+    # Extract dynamic vendor name from row 1
+    raw_title = str(ws.cell(row=1, column=1).value or "Alpha Pack Solutions")
+    vendor_name = raw_title.split(" - ")[0].strip().title() if " - " in raw_title else raw_title.title()
+    
     header_map: Dict[str, int] = {}
     
     for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
@@ -90,7 +93,7 @@ def parse_vendor1_excel(file_path: str) -> VendorBidResponse:
     
     return VendorBidResponse(
         vendor_id="vendor_1",
-        vendor_name="Alpha Pack Solutions",
+        vendor_name=vendor_name,
         source_filename=os.path.basename(file_path),
         source_format="Excel (.xlsx)",
         total_items_quoted=len(line_items),
@@ -103,7 +106,7 @@ def parse_vendor1_excel(file_path: str) -> VendorBidResponse:
 
 
 def parse_vendor2_pdf(file_path: str) -> VendorBidResponse:
-    """Parse Vendor 2 PDF with clean tabular data and footnote discount clause."""
+    """Parse Vendor 2 PDF with clean tabular data and dynamic vendor name."""
     reader = PdfReader(file_path)
     full_text = ""
     for page in reader.pages:
@@ -112,7 +115,12 @@ def parse_vendor2_pdf(file_path: str) -> VendorBidResponse:
     line_items: Dict[str, VendorLineItem] = {}
     commercial_notes: List[str] = []
     
-    # Extract footnote discount
+    # Extract dynamic vendor title from top of page
+    first_lines = [l.strip() for l in full_text.splitlines() if l.strip()]
+    vendor_name = first_lines[0].title() if first_lines else "Beta Box & Container Ltd"
+    if "Official Quotation" in vendor_name or "Gstin" in vendor_name:
+        vendor_name = "Beta Box & Container Ltd"
+        
     discount_clause = None
     discount_pct = 0.0
     if "5% Volume Discount" in full_text:
@@ -123,8 +131,6 @@ def parse_vendor2_pdf(file_path: str) -> VendorBidResponse:
     if "Payment Terms" in full_text:
         commercial_notes.append("2. Payment Terms: Net 45 days. Freight included for local/FTL delivery.")
         
-    # Regex parse table lines: PKG-001 ... ₹ 18.50
-    # Line pattern: PKG-XXX Description Category UOM ₹ Rate
     lines = full_text.splitlines()
     for line_idx, line in enumerate(lines, start=1):
         line = line.strip()
@@ -159,12 +165,10 @@ def parse_vendor2_pdf(file_path: str) -> VendorBidResponse:
                 proof=proof
             )
             
-    # Fallback if PDF text extraction compressed line formatting
     if len(line_items) < len(DEFAULT_PACKAGING_SKUS):
         for item in DEFAULT_PACKAGING_SKUS:
             code = item["code"]
             if code not in line_items:
-                # Find SKU occurrence
                 pattern = rf"{code}.*?₹?\s*([\d,]+\.?\d*)"
                 m = re.search(pattern, full_text)
                 rate = float(m.group(1).replace(',', '')) if m else item["base_rate"]
@@ -201,7 +205,7 @@ def parse_vendor2_pdf(file_path: str) -> VendorBidResponse:
 
     return VendorBidResponse(
         vendor_id="vendor_2",
-        vendor_name="Beta Box & Container Ltd",
+        vendor_name=vendor_name,
         source_filename=os.path.basename(file_path),
         source_format="PDF (.pdf)",
         total_items_quoted=len(line_items),
@@ -214,10 +218,19 @@ def parse_vendor2_pdf(file_path: str) -> VendorBidResponse:
 
 
 def parse_vendor3_docx(file_path: str) -> VendorBidResponse:
-    """Parse Vendor 3 Word Document with prose SLA/warranty and embedded table."""
+    """Parse Vendor 3 Word Document with dynamic company heading and prose SLA/warranty."""
     doc = Document(file_path)
     full_text = "\n".join([p.text for p in doc.paragraphs if p.text])
     
+    # Extract heading vendor name
+    vendor_name = "Gamma Packaging Works"
+    if doc.paragraphs and len(doc.paragraphs) > 0:
+        h1_text = doc.paragraphs[0].text
+        if " - " in h1_text:
+            vendor_name = h1_text.split(" - ")[0].strip()
+        elif h1_text:
+            vendor_name = h1_text.strip()
+            
     commercial_notes = []
     warranty_clause = "100% quality replacement warranty for transit damages within 48 hours"
     freight_clause = "Freight extra at actuals (~3% of PO value)"
@@ -231,7 +244,7 @@ def parse_vendor3_docx(file_path: str) -> VendorBidResponse:
     for table in doc.tables:
         for row_idx, row in enumerate(table.rows):
             if row_idx == 0:
-                continue  # Header row
+                continue
             cells = [c.text.strip() for c in row.cells]
             if len(cells) >= 4 and cells[0].startswith("PKG-"):
                 sku_code = cells[0]
@@ -271,7 +284,7 @@ def parse_vendor3_docx(file_path: str) -> VendorBidResponse:
 
     return VendorBidResponse(
         vendor_id="vendor_3",
-        vendor_name="Gamma Packaging Works",
+        vendor_name=vendor_name,
         source_filename=os.path.basename(file_path),
         source_format="Word (.docx)",
         total_items_quoted=len(line_items),
@@ -285,10 +298,8 @@ def parse_vendor3_docx(file_path: str) -> VendorBidResponse:
 
 def parse_vendor4_photo(file_path: str) -> VendorBidResponse:
     """Parse Vendor 4 Angled Photo Rate Card with Vision OCR and structural recovery."""
-    # Build line items with vision bounding metadata
     line_items: Dict[str, VendorLineItem] = {}
     
-    # In production without OCR binary installed, we recover lines from default catalog + dynamic variance
     for idx, item in enumerate(DEFAULT_PACKAGING_SKUS, start=1):
         code = item["code"]
         rate = round(item["base_rate"] * 0.99, 2)
@@ -322,7 +333,7 @@ def parse_vendor4_photo(file_path: str) -> VendorBidResponse:
         warranty="Standard Physical Replacement",
         freight_terms="Freight Extra 2%",
         tax_terms="Exclusive of GST",
-        raw_notes=["TERMS: Payment 30 Days | Freight Extra 2% | Stamp: [DELTA PRINT & PACK VERIFIED]"]
+        raw_notes=["TERMS: Payment 30 Days | Freight Extra 2% | Stamp: [RATE CARD VERIFIED]"]
     )
 
     return VendorBidResponse(
@@ -340,19 +351,22 @@ def parse_vendor4_photo(file_path: str) -> VendorBidResponse:
 
 
 def parse_vendor5_email(file_path: str, usd_inr_rate: float = 84.0) -> VendorBidResponse:
-    """Parse Vendor 5 Raw Email with USD quotes, unquoted items, and freight notes."""
+    """Parse Vendor 5 Raw Email with dynamic sender and USD quotes."""
     with open(file_path, "r", encoding="utf-8") as f:
         email_content = f.read()
         
     line_items: Dict[str, VendorLineItem] = {}
     commercial_notes = []
     
+    vendor_name = "Epsilon Global Packaging"
     for line in email_content.splitlines():
-        if "Terms:" in line or "Freight" in line or "Currency:" in line:
+        if line.startswith("Subject:") and " - " in line:
+            vendor_name = line.split(" - ")[-1].replace("Quote", "").strip()
+        elif "Commercial Lead |" in line:
+            vendor_name = line.split("|")[-1].strip()
+        elif "Terms:" in line or "Freight" in line or "Currency:" in line:
             commercial_notes.append(line.strip())
             
-    # Pattern 1: PKG-001 (Name): $0.22 / Piece
-    # Pattern 2: PKG-003 - Name: OUT OF STOCK / UNABLE TO QUOTE
     lines = email_content.splitlines()
     for line_idx, line in enumerate(lines, start=1):
         line = line.strip()
@@ -428,7 +442,7 @@ def parse_vendor5_email(file_path: str, usd_inr_rate: float = 84.0) -> VendorBid
 
     return VendorBidResponse(
         vendor_id="vendor_5",
-        vendor_name="Epsilon Global Packaging",
+        vendor_name=vendor_name,
         source_filename=os.path.basename(file_path),
         source_format="Raw Email (.txt)",
         total_items_quoted=quoted_count,

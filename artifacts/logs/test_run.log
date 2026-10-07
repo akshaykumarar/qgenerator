@@ -6,8 +6,8 @@ plugins: anyio-4.15.1
 collecting ... collected 6 items
 
 tests/test_procurement_engine.py::test_settings_multi_provider_dynamic PASSED [ 16%]
-tests/test_procurement_engine.py::test_dataset_generation PASSED         [ 33%]
-tests/test_procurement_engine.py::test_user_feedback_dynamic_pricing PASSED [ 50%]
+tests/test_procurement_engine.py::test_dataset_generation_caching_and_archiving PASSED [ 33%]
+tests/test_procurement_engine.py::test_feedback_vs_random_generation PASSED [ 50%]
 tests/test_procurement_engine.py::test_extraction_and_normalization PASSED [ 66%]
 tests/test_procurement_engine.py::test_comparison_matrix_and_optimization PASSED [ 83%]
 tests/test_procurement_engine.py::test_copilot_interrogation PASSED      [100%]
@@ -18,4 +18,4 @@ tests/test_procurement_engine.py::test_copilot_interrogation PASSED      [100%]
     VersionedUnionType = Union[builtin_types.UnionType, _UnionGenericAlias]
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-========================= 6 passed, 1 warning in 1.95s =========================
+========================= 6 passed, 1 warning in 3.07s =========================

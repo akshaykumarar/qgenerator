@@ -1,1 +1,28 @@
+# Environment variables & secrets
 .env
+.env.*
+!.env.example
+
+# Python cache & virtual environment
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Generated dataset & archive (Do not push test files to git)
+vendor_dataset/
+archive/
+*.zip
+*.xlsx
+*.pdf
+*.docx
+*.png
+*.txt
+
+# IDE & OS files
+.DS_Store
+.vscode/
+.idea/

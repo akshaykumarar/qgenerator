@@ -22,6 +22,16 @@ html, body, [class*="css"] {
     max-width: 96%;
 }
 
+/* Hide Streamlit Deploy button and toolbar elements */
+.stDeployButton,
+[data-testid="stToolbarActions"],
+[data-testid="manage-app-button"],
+[data-testid="stHeader"] .stDeployButton,
+#MainMenu {
+    display: none !important;
+    visibility: hidden !important;
+}
+
 /* Header Banner */
 .portal-header {
     background: linear-gradient(135deg, #002B49 0%, #004370 100%);
