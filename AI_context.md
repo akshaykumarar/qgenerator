@@ -4,7 +4,8 @@
 The Intelligent Procurement Assistant is an enterprise B2B SaaS web application designed for strategic sourcing teams. It synchronizes a **Master RFI Baseline Specification (6th File)** with unstructured, multi-format vendor bid documents (Excel, PDF, Word, 2-Part Angled Smartphone Photos, USD Email) for a 30-SKU packaging consumables catalog (order volumes: 50 to 500 units, diverse UOMs: Kg, Metre, Piece, Roll, Pack), normalizes rates into INR, reconciles non-standard UOMs, injects realistic market noise (MOQs, BOQ variances, freight terms, duplicates, extra items, out-of-stock unquoted lines, USD foreign currency), provides line-level visual audit proof, and enables natural language split-award interrogation.
 
 ## Key Components & Paths
-- **Streamlit Web Application Entry Point**: [app.py](file:///Users/akshaykumar/code/qgenerator/app.py)
+- **Hostinger Static Web App Entrypoint**: [index.html](file:///Users/akshaykumar/code/qgenerator/index.html), [index.php](file:///Users/akshaykumar/code/qgenerator/index.php), [.htaccess](file:///Users/akshaykumar/code/qgenerator/.htaccess) (Zero-dependency client-side SPA with interactive 30-SKU normalization matrix, split-award optimizer, line-level proof modal, and client-side copilot).
+- **Streamlit Local Web Application Entry Point**: [app.py](file:///Users/akshaykumar/code/qgenerator/app.py) & [.streamlit/config.toml](file:///Users/akshaykumar/code/qgenerator/.streamlit/config.toml)
 - **Configuration & Provider Settings**: [src/config/settings.py](file:///Users/akshaykumar/code/qgenerator/src/config/settings.py)
 - **Pydantic Data Models**: [src/models/schemas.py](file:///Users/akshaykumar/code/qgenerator/src/models/schemas.py)
 - **Multi-Provider LLM Client** (Gemini, OpenAI, OpenRouter, Ollama): [src/tools/llm_client.py](file:///Users/akshaykumar/code/qgenerator/src/tools/llm_client.py)
@@ -23,3 +24,4 @@ The Intelligent Procurement Assistant is an enterprise B2B SaaS web application 
 
 ## Testing & Validation
 All unit and integration tests are in [tests/test_procurement_engine.py](file:///Users/akshaykumar/code/qgenerator/tests/test_procurement_engine.py), logged in [artifacts/logs/test_run.log](file:///Users/akshaykumar/code/qgenerator/artifacts/logs/test_run.log).
+

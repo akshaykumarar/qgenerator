@@ -72,15 +72,19 @@ USD_INR_RATE=84.0
 DATASET_DIR=./vendor_dataset
 ```
 
-### 3. Launch Web Application
+### 3. Launch Web Application (Local Streamlit)
 ```bash
 .venv/bin/streamlit run app.py
 ```
 Open your browser at `http://localhost:8501`.
 
-### 4. Run Automated Tests
+### 4. Deploy to Hostinger
+The repository is 100% Hostinger-compatible out of the box:
+- **Hostinger Standard Git Deployment**: Hostinger automatically serves [index.html](file:///Users/akshaykumar/code/qgenerator/index.html) (with [index.php](file:///Users/akshaykumar/code/qgenerator/index.php) and [.htaccess](file:///Users/akshaykumar/code/qgenerator/.htaccess) fallbacks) directly at your domain (e.g. `qgenerator.elimenots.xyz`) with zero server configuration and zero 403 errors.
+
+### 5. Run Automated Tests
 ```bash
-PYTHONPATH=. .venv/bin/pytest tests/ -v
+.venv/bin/pytest -v
 ```
 
 ---

@@ -65,3 +65,9 @@ The system supports pluggable LLM backends via [UnifiedProcurementLLM](file:///U
 - **Ollama**: Dynamic model list loaded from configuration (`OLLAMA_MODELS` / `AI_MODEL`) via OpenAI-compatible endpoint.
 - **Custom Model String Input**: Supported dynamically without hardcoded enum restrictions.
 - **Offline Fallback**: High-speed deterministic rule-based procurement advisor when running without active API credentials.
+
+## 5. Hostinger Web Deployment Architecture
+- **Hostinger Standard Git Web Deployment**: Direct root entrypoints ([index.html](file:///Users/akshaykumar/code/qgenerator/index.html), [index.php](file:///Users/akshaykumar/code/qgenerator/index.php), [.htaccess](file:///Users/akshaykumar/code/qgenerator/.htaccess)) deliver a lightweight, responsive client-side interface with an interactive 30-SKU normalization matrix, split-award optimizer with live Chart.js visualizations, line-level proof inspection drawers, and client-side multi-provider AI copilot.
+- **Streamlit Local Runtime**: [app.py](file:///Users/akshaykumar/code/qgenerator/app.py) & [.streamlit/config.toml](file:///Users/akshaykumar/code/qgenerator/.streamlit/config.toml) provide local Python execution and interactive visualization.
+
+
