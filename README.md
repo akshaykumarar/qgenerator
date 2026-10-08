@@ -1,24 +1,29 @@
 # Autonomous RFx Normalization & Interrogation Engine
 
-An enterprise B2B SaaS application for strategic procurement teams. Ingests unstructured, multi-format vendor proposals (Excel, PDF, Word, Angled Smartphone Photo, USD Email) for packaging consumables (~₹4.2 Crore annual portfolio), normalizes rates into standard INR and UOMs, provides line-level visual audit proof, and enables natural language split-award interrogation.
+An enterprise B2B SaaS application for strategic procurement teams. Ingests unstructured, multi-format vendor proposals (Excel, PDF, Word, 2-Part Angled Smartphone Photo, USD Email) generated synchronously from a **Master RFI Baseline Specification** (50-500 order volume range, diverse UOMs including Kg, Metre, Piece, Roll, Pack), normalizes rates into standard INR and UOMs, provides line-level visual audit proof, and enables natural language split-award interrogation.
 
 ---
 
 ## 🌟 Key Features
 
-1. **Autonomous 5-Vendor Multi-Format Generator**:
-   - Generates realistic multi-format bid documents (Excel, Vector PDF, Word DOCX, Perspective-Distorted Phone Photo, and Raw USD Email).
-   - Dynamic scenario / feedback prompt input (e.g. *"Increase carton prices by 15%"*, *"Apply 10% discount on tapes"*).
-   - **Zero-Latency In-Memory Caching & Instant Downloads**: Download any individual file directly or download the complete 5-vendor dataset as a ZIP bundle.
-   - **Auto-Archiving**: Automatically moves previous dataset runs into `vendor_dataset/archive/dataset_YYYYMMDD_HHMMSS/` upon generating a fresh set, while keeping datasets strictly out of git.
+1. **Autonomous 6-File RFx & 5-Vendor Multi-Format Generator**:
+   - **Master RFI Baseline Specification (6th File)**: Generates official enterprise RFI & BOQ (`rfi_baseline_specification.xlsx` & `rfi_procurement_prompt.txt`) establishing baseline item specifications, target quantities (50 - 500 units), standard UOMs (`Piece`, `Kg`, `Metre`, `Roll`, `Pack`), and bidding instructions.
+   - **Synchronous Realistic Vendor Bids**: Generates 5 realistic vendor proposals responding to the RFI with realistic market noise:
+     - **Vendor 1 (Excel)**: Custom headers, MOQs, BOQ quantity variances, freight terms, and volume tier duplicates.
+     - **Vendor 2 (Vector PDF)**: Tabular rate card, BOQ quantities, MOQs, and buried footnote discount clause (*"5% Volume Discount if PO > 1,500 units"*).
+     - **Vendor 3 (Word DOCX)**: Embedded table, prose SLA (*"100% quality replacement warranty"*), freight extra (~3%), and unrequested extra accessory line item.
+     - **Vendor 4 (Angled Smartphone Photos)**: Physical rate card snapshots generated in **2 distinct parts** (`Part 1: Cartons & Tapes`, `Part 2: Films & Specialty`) with realistic perspective distortion.
+     - **Vendor 5 (Raw USD Email)**: International export quote in USD ($) with flat ocean freight ($350) and out-of-stock unquoted lines (27/30 quoted).
+   - **Zero-Latency In-Memory Caching & Instant Downloads**: Download any individual file directly or download the complete 6-file dataset as a ZIP bundle (`RFx_and_5_Vendor_Dataset.zip`).
+   - **Auto-Archiving**: Automatically archives previous dataset runs into `vendor_dataset/archive/dataset_YYYYMMDD_HHMMSS/` upon generating a fresh set, while keeping datasets strictly out of git.
+
 2. **Multimodal Extraction & Normalization Engine**:
-   - **Vendor 1 (Excel)**: Non-standard column headers, MOQ, lead times, and GST tax terms.
-   - **Vendor 2 (PDF)**: Tabular parsing and buried footnote discount clause (*"5% Volume Discount if PO > 5,000 units"*).
-   - **Vendor 3 (Word)**: Embedded table extraction and prose SLA clauses (*"100% quality replacement warranty"*, *"Freight extra at ~3%"*).
-   - **Vendor 4 (Angled Photo)**: 4-point homography unwarping and Vision OCR extraction.
-   - **Vendor 5 (Email)**: Foreign currency normalization (USD → INR at ₹84.0/USD) and unquoted item detection (*27/30 items quoted*).
+   - Deterministic and vision-powered parsers extract structured line items, MOQs, freight terms, currency conversions, and commercial clauses.
+   - Converts foreign currency quotes from USD ($) to INR (₹) at standard conversion rate (₹84.0/USD).
+
 3. **Line-Level Visual Proof & Deal Auditability**:
-   - Ground truth inspection drawer displaying exact verbatim snippets, page numbers, row coordinates, AI confidence scores, and raw rate card photo preview.
+   - Ground truth inspection drawer displaying exact verbatim snippets, page numbers, row coordinates, AI confidence scores, and raw 2-part rate card photo previews.
+
 4. **Config-Driven Multi-Provider AI Sourcing Copilot**:
    - Pluggable support for **Google Gemini**, **OpenAI**, **OpenRouter**, and **Ollama** (Local).
    - Models are dynamically configured via `.env` options (`GEMINI_MODELS`, `OPENAI_MODELS`, `OPENROUTER_MODELS`, `OLLAMA_MODELS`, `AI_MODEL`) or custom model input strings without hardcoding.
@@ -97,30 +102,24 @@ PYTHONPATH=. .venv/bin/pytest tests/ -v
 ```
 qgenerator/
 ├── app.py                     # Main Streamlit SaaS Application
-├── generator.py               # Standalone 5-Vendor Data Generator
-├── .env.example               # Environment template with dynamic multi-provider config
-├── .env                       # Local environment settings
-├── requirements.txt           # Python dependency specifications
-├── README.md                  # Project documentation & quickstart
-├── architecture.md            # Architecture, Pydantic schemas, & design intent
-├── AI_context.md              # AI agent context and decisions log
 ├── src/
-│   ├── config/settings.py     # Pydantic BaseSettings with dynamic config-driven models
-│   ├── models/schemas.py      # Pydantic data models for SKUs, Proof, Matrix, Copilot
-│   ├── tools/
-│   │   ├── gemini_client.py   # Native Google Gemini client
-│   │   └── llm_client.py      # Unified Gemini / OpenAI / OpenRouter / Ollama client
-│   ├── generator/
-│   │   └── packaging_generator.py # 5-format document generator with dynamic feedback
+│   ├── config/settings.py     # App settings & dynamic multi-provider model loader
+│   ├── generator/packaging_generator.py # Master RFI & 5-Vendor Document Generator
 │   ├── extractor/
-│   │   ├── local_parsers.py   # Deterministic parsers for Excel, PDF, Docx, Photo, Email
-│   │   └── multimodal_engine.py # Unified multimodal extraction pipeline
+│   │   ├── multimodal_engine.py # Multimodal routing engine
+│   │   └── local_parsers.py     # Deterministic parsers with line-level proof
 │   ├── analytics/
-│   │   ├── matrix_builder.py  # Normalization matrix & deal totals builder
-│   │   └── optimizer.py       # L1 and 2-vendor split-award optimization solvers
+│   │   ├── matrix_builder.py    # Side-by-side normalizer & deal totals
+│   │   └── optimizer.py         # Split-award L1 mathematical solver
+│   ├── models/schemas.py        # Pydantic data schemas
+│   ├── tools/llm_client.py      # Unified LLM provider client (Gemini/OpenAI/OpenRouter/Ollama)
 │   └── ui/
-│       ├── styles.py          # Enterprise B2B Slate theme CSS tokens
-│       └── components.py      # KPI cards, visual proof drawers, spend charts
-└── tests/
-    └── test_procurement_engine.py # Unit and integration test suite
+│       ├── styles.py            # Custom CSS & banner styling
+│       └── components.py        # File badges, proofs, KPI cards, charts
+├── tests/
+│   └── test_procurement_engine.py # Complete test suite
+├── artifacts/
+│   ├── plan_*.md                # Planning & implementation artifacts
+│   └── logs/test_run.log        # Test execution logs
+└── vendor_dataset/              # Generated RFI & vendor proposals (git-ignored)
 ```

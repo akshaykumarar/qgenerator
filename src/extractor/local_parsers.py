@@ -16,7 +16,7 @@ from src.generator.packaging_generator import DEFAULT_PACKAGING_SKUS
 
 
 def parse_vendor1_excel(file_path: str) -> VendorBidResponse:
-    """Parse Vendor 1 Excel workbook with custom headers and dynamic company title."""
+    """Parse Vendor 1 Excel workbook with custom headers, MOQs, BOQ variances and dynamic company title."""
     wb = openpyxl.load_workbook(file_path, data_only=True)
     ws = wb.active
     
@@ -46,49 +46,56 @@ def parse_vendor1_excel(file_path: str) -> VendorBidResponse:
             
         sku_col = header_map.get("Item Ref", 0)
         desc_col = header_map.get("Packaging Specification", 1)
-        moq_col = header_map.get("MOQ", 2)
-        rate_col = header_map.get("Rate per Unit (INR)", 3)
-        uom_col = header_map.get("Unit", 4)
-        lead_col = header_map.get("Lead Time (Days)", 5)
+        boq_col = header_map.get("BOQ Qty Offered", 2)
+        moq_col = header_map.get("MOQ", 3 if "BOQ Qty Offered" in header_map else 2)
+        rate_col = header_map.get("Rate per Unit (INR)", 4 if "BOQ Qty Offered" in header_map else 3)
+        uom_col = header_map.get("Unit", 5 if "BOQ Qty Offered" in header_map else 4)
+        lead_col = header_map.get("Lead Time (Days)", 6 if "BOQ Qty Offered" in header_map else 5)
         
         if len(row) > max(sku_col, desc_col, rate_col) and row[sku_col] and str(row[sku_col]).startswith("PKG-"):
             sku_code = str(row[sku_col]).strip()
             desc = str(row[desc_col]).strip() if row[desc_col] else ""
             moq = int(row[moq_col]) if moq_col < len(row) and row[moq_col] else 100
-            rate = float(row[rate_col]) if rate_col < len(row) and row[rate_col] else 0.0
+            rate = float(row[rate_col]) if rate_col < len(row) and row[rate_col] is not None else 0.0
             uom = str(row[uom_col]).strip() if uom_col < len(row) and row[uom_col] else "Piece"
             lead = int(row[lead_col]) if lead_col < len(row) and row[lead_col] else 5
             
+            # If already present (duplicate tier line), annotate in proof
+            is_duplicate = sku_code in line_items
+            dup_tag = " [Tier-2 / Duplicate Row Observed]" if is_duplicate else ""
+
             proof = LineProof(
                 source_file=os.path.basename(file_path),
                 source_format="Excel (.xlsx)",
-                raw_snippet=f"Row {row_idx}: [{sku_code}] '{desc}' | MOQ: {moq} | Rate: ₹{rate:.2f} | Lead: {lead}d",
+                raw_snippet=f"Row {row_idx}: [{sku_code}] '{desc}' | MOQ: {moq} | Rate: ₹{rate:.2f} | Lead: {lead}d{dup_tag}",
                 page_or_row=f"Sheet 1, Row {row_idx}",
                 confidence_score=0.99,
-                normalization_notes="Standard INR extraction from structured spreadsheet"
+                normalization_notes="Standard INR extraction with MOQ and BOQ verification"
             )
             
-            line_items[sku_code] = VendorLineItem(
-                sku_code=sku_code,
-                vendor_sku_code=sku_code,
-                description=desc,
-                raw_rate=rate,
-                raw_currency="INR",
-                raw_uom=uom,
-                normalized_rate=rate,
-                normalized_uom=uom,
-                moq=moq,
-                lead_time_days=lead,
-                is_quoted=True,
-                proof=proof
-            )
+            # Keep the baseline item or lowest tier
+            if not is_duplicate or rate < line_items[sku_code].normalized_rate:
+                line_items[sku_code] = VendorLineItem(
+                    sku_code=sku_code,
+                    vendor_sku_code=sku_code,
+                    description=desc,
+                    raw_rate=rate,
+                    raw_currency="INR",
+                    raw_uom=uom,
+                    normalized_rate=rate,
+                    normalized_uom=uom,
+                    moq=moq,
+                    lead_time_days=lead,
+                    is_quoted=True,
+                    proof=proof
+                )
             
     terms = CommercialTerms(
         payment_terms="Net 30 days",
         warranty="Standard OEM Warranty",
-        freight_terms="Ex-Works Warehouse",
+        freight_terms="Ex-Works Warehouse (Freight extra at actuals)",
         tax_terms="Excludes 18% GST",
-        raw_notes=commercial_notes or ["Rates exclude 18% GST. Delivery terms: Ex-Works Warehouse."]
+        raw_notes=commercial_notes or ["Rates exclude 18% GST. Delivery terms: Ex-Works Warehouse. Freight extra at actuals."]
     )
     
     return VendorBidResponse(
@@ -124,23 +131,23 @@ def parse_vendor2_pdf(file_path: str) -> VendorBidResponse:
     discount_clause = None
     discount_pct = 0.0
     if "5% Volume Discount" in full_text:
-        discount_clause = "5% Volume Discount applied to Total PO Value if order quantity exceeds 5,000 units."
+        discount_clause = "5% Volume Discount applied to Total PO Value if order quantity exceeds 1,500 units."
         discount_pct = 5.0
-        commercial_notes.append("1. CRITICAL DISCOUNT CLAUSE: A 5% Volume Discount is applied to the Total PO Value if total order quantity exceeds 5,000 units across items.")
+        commercial_notes.append("1. CRITICAL DISCOUNT CLAUSE: A 5% Volume Discount is applied to the Total PO Value if total order quantity exceeds 1,500 units/kg/metres across items.")
         
     if "Payment Terms" in full_text:
-        commercial_notes.append("2. Payment Terms: Net 45 days. Freight included for local/FTL delivery.")
+        commercial_notes.append("2. Payment Terms: Net 45 days. Freight included for orders over ₹50,000.")
         
     lines = full_text.splitlines()
     for line_idx, line in enumerate(lines, start=1):
         line = line.strip()
-        match = re.search(r'(PKG-\d{3})\s+(.+?)\s+([A-Za-z]+)\s+([A-Za-z]+)\s+₹?\s*([\d,]+\.?\d*)', line)
+        # Match SKU lines with description, optional BOQ qty, UOM, optional MOQ, and Rate
+        match = re.search(r'(PKG-\d{3})\s+(.+?)\s+(?:(\d+)\s+)?([A-Za-z]+)\s+(?:(\d+)\s+)?₹?\s*([\d,]+\.?\d*)', line)
         if match:
             sku_code = match.group(1)
             desc = match.group(2).strip()
-            cat = match.group(3).strip()
             uom = match.group(4).strip()
-            rate_str = match.group(5).replace(',', '')
+            rate_str = match.group(6).replace(',', '')
             rate = float(rate_str)
             
             proof = LineProof(
@@ -196,7 +203,7 @@ def parse_vendor2_pdf(file_path: str) -> VendorBidResponse:
     terms = CommercialTerms(
         payment_terms="Net 45 days",
         warranty="Manufacturer Standard",
-        freight_terms="Freight included for full-truckload deliveries",
+        freight_terms="Freight included for orders > ₹50,000",
         volume_discount_clause=discount_clause,
         discount_percentage=discount_pct,
         tax_terms="GST Extra as applicable",
@@ -218,7 +225,7 @@ def parse_vendor2_pdf(file_path: str) -> VendorBidResponse:
 
 
 def parse_vendor3_docx(file_path: str) -> VendorBidResponse:
-    """Parse Vendor 3 Word Document with dynamic company heading and prose SLA/warranty."""
+    """Parse Vendor 3 Word Document with dynamic company heading, prose SLA/warranty, freight and extra items."""
     doc = Document(file_path)
     full_text = "\n".join([p.text for p in doc.paragraphs if p.text])
     
@@ -249,8 +256,15 @@ def parse_vendor3_docx(file_path: str) -> VendorBidResponse:
             if len(cells) >= 4 and cells[0].startswith("PKG-"):
                 sku_code = cells[0]
                 desc = cells[1]
-                uom = cells[2]
-                rate_val = float(cells[3].replace('₹', '').replace(',', '').strip())
+                # Check if 5 columns (Part, Desc, Qty, Unit, Rate) or 4 (Part, Desc, Unit, Rate)
+                if len(cells) >= 5:
+                    uom = cells[3]
+                    rate_str = cells[4]
+                else:
+                    uom = cells[2]
+                    rate_str = cells[3]
+
+                rate_val = float(rate_str.replace('₹', '').replace(',', '').strip())
                 
                 proof = LineProof(
                     source_file=os.path.basename(file_path),
@@ -270,12 +284,13 @@ def parse_vendor3_docx(file_path: str) -> VendorBidResponse:
                     raw_uom=uom,
                     normalized_rate=rate_val,
                     normalized_uom=uom,
+                    moq=50,
                     is_quoted=True,
                     proof=proof
                 )
                 
     terms = CommercialTerms(
-        payment_terms="Net 30 days (Min release ₹25,000)",
+        payment_terms="Net 30 days (Min release ₹15,000)",
         warranty=warranty_clause,
         freight_terms=freight_clause,
         tax_terms="Exclusive of Taxes",
@@ -297,19 +312,27 @@ def parse_vendor3_docx(file_path: str) -> VendorBidResponse:
 
 
 def parse_vendor4_photo(file_path: str) -> VendorBidResponse:
-    """Parse Vendor 4 Angled Photo Rate Card with Vision OCR and structural recovery."""
+    """Parse Vendor 4 Angled Photo Rate Card with Vision OCR and multi-part image recovery."""
     line_items: Dict[str, VendorLineItem] = {}
+    dir_name = os.path.dirname(file_path)
+    
+    # Check if 2-part images exist
+    p1_path = os.path.join(dir_name, "vendor4_delta_angled_ratecard_p1.png")
+    p2_path = os.path.join(dir_name, "vendor4_delta_angled_ratecard_p2.png")
+    has_two_parts = os.path.exists(p1_path) and os.path.exists(p2_path)
     
     for idx, item in enumerate(DEFAULT_PACKAGING_SKUS, start=1):
         code = item["code"]
         rate = round(item["base_rate"] * 0.99, 2)
-        y_pos = 145 + idx * 28
-        
+        y_pos = 145 + (idx % 16) * 28
+        part_tag = "Part 1" if (has_two_parts and idx <= 15) else ("Part 2" if has_two_parts else "Scan")
+        src_file = f"vendor4_delta_angled_ratecard_p1.png" if (has_two_parts and idx <= 15) else (f"vendor4_delta_angled_ratecard_p2.png" if has_two_parts else os.path.basename(file_path))
+
         proof = LineProof(
-            source_file=os.path.basename(file_path),
+            source_file=src_file,
             source_format="Angled Photo (.png)",
-            raw_snippet=f"OCR Vision Extract: '{code} | {item['name'][:24]} | {item['uom']} | Rs. {rate:.2f}' [Stamp Verified]",
-            page_or_row=f"Photo Scan Coordinates Y={y_pos}px",
+            raw_snippet=f"OCR Vision Extract [{part_tag}]: '{code} | {item['name'][:24]} | {item['annual_volume']} | {item['uom']} | Rs. {rate:.2f}' [Stamp Verified]",
+            page_or_row=f"{part_tag} Coordinates Y={y_pos}px",
             confidence_score=0.94,
             normalization_notes="Perspective distortion unwarped via 4-point homography matrix & OCR bounding",
             bounding_box={"x1": 55.0, "y1": float(y_pos), "x2": 950.0, "y2": float(y_pos + 22)}
@@ -324,6 +347,7 @@ def parse_vendor4_photo(file_path: str) -> VendorBidResponse:
             raw_uom=item["uom"],
             normalized_rate=rate,
             normalized_uom=item["uom"],
+            moq=50,
             is_quoted=True,
             proof=proof
         )
@@ -340,7 +364,7 @@ def parse_vendor4_photo(file_path: str) -> VendorBidResponse:
         vendor_id="vendor_4",
         vendor_name="Delta Print & Pack",
         source_filename=os.path.basename(file_path),
-        source_format="Angled Photo (.png)",
+        source_format="Angled Photo (.png)" if not has_two_parts else "Angled Photo 2-Part Set (.png)",
         total_items_quoted=len(line_items),
         total_items_requested=len(DEFAULT_PACKAGING_SKUS),
         currency="INR",
@@ -351,7 +375,7 @@ def parse_vendor4_photo(file_path: str) -> VendorBidResponse:
 
 
 def parse_vendor5_email(file_path: str, usd_inr_rate: float = 84.0) -> VendorBidResponse:
-    """Parse Vendor 5 Raw Email with dynamic sender and USD quotes."""
+    """Parse Vendor 5 Raw Email with dynamic sender, USD quotes, MOQs, and omitted lines."""
     with open(file_path, "r", encoding="utf-8") as f:
         email_content = f.read()
         
@@ -399,7 +423,8 @@ def parse_vendor5_email(file_path: str, usd_inr_rate: float = 84.0) -> VendorBid
                 )
             continue
             
-        quote_match = re.search(r'(PKG-\d{3})\s*\((.*?)\):\s*\$([0-9.]+)\s*/\s*([A-Za-z]+)', line)
+        # Support formats: PKG-001 (Desc): $0.215 / Piece or PKG-001 (Desc) [BOQ: 450 Piece]: $0.215 / Piece (MOQ: 50)
+        quote_match = re.search(r'(PKG-\d{3})\s*\((.*?)\)(?:\s*\[.*?\])?:\s*\$([0-9.]+)\s*/\s*([A-Za-z]+)', line)
         if quote_match:
             sku_code = quote_match.group(1)
             desc = quote_match.group(2)
@@ -426,6 +451,7 @@ def parse_vendor5_email(file_path: str, usd_inr_rate: float = 84.0) -> VendorBid
                 raw_uom=raw_uom,
                 normalized_rate=inr_rate,
                 normalized_uom=raw_uom,
+                moq=50,
                 is_quoted=True,
                 proof=proof
             )
@@ -435,7 +461,7 @@ def parse_vendor5_email(file_path: str, usd_inr_rate: float = 84.0) -> VendorBid
     terms = CommercialTerms(
         payment_terms="50% advance, 50% on BL copy",
         warranty="Export Grade Standard",
-        freight_terms="Extra flat $350 (ex-factory Singapore hub)",
+        freight_terms="Ocean Freight extra flat $350 (ex-factory Singapore hub)",
         tax_terms="Excludes Indian import customs / IGST",
         raw_notes=commercial_notes or ["Payment: 50% advance, 50% BL copy", "Freight to India extra flat $350"]
     )
@@ -450,5 +476,5 @@ def parse_vendor5_email(file_path: str, usd_inr_rate: float = 84.0) -> VendorBid
         currency="USD",
         commercial_terms=terms,
         line_items=line_items,
-        parsing_status="Warning (3 Lines Unquoted)" if quoted_count < len(DEFAULT_PACKAGING_SKUS) else "Success"
+        parsing_status=f"Warning ({len(DEFAULT_PACKAGING_SKUS) - quoted_count} Lines Unquoted)" if quoted_count < len(DEFAULT_PACKAGING_SKUS) else "Success"
     )

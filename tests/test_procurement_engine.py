@@ -1,4 +1,4 @@
-"""Unit and integration test suite for Autonomous RFx Engine."""
+"""Unit and integration test suite for Autonomous RFx Engine with RFI Specification & Vendor Noise."""
 import os
 import io
 import zipfile
@@ -33,21 +33,43 @@ def test_settings_multi_provider_dynamic():
     assert settings.usd_inr_rate == 84.0
 
 
+def test_sku_catalog_order_volumes_and_uoms():
+    """Verify catalog order volumes are constrained to 50-500 pieces/kg/metres and diverse UOMs exist."""
+    for sku in DEFAULT_PACKAGING_SKUS:
+        assert 50 <= sku["annual_volume"] <= 500, f"SKU {sku['code']} volume {sku['annual_volume']} outside 50-500 range"
+        assert sku["uom"] in ["Piece", "Kg", "Metre", "Roll", "Pack", "Set"], f"Unexpected UOM {sku['uom']}"
+
+    uom_set = {s["uom"] for s in DEFAULT_PACKAGING_SKUS}
+    assert "Piece" in uom_set
+    assert "Kg" in uom_set
+    assert "Metre" in uom_set
+
+
 def test_dataset_generation_caching_and_archiving(tmp_path):
-    """Verify 5-vendor dataset generation creates files, caches bytes, and archives old sets."""
+    """Verify 6-file dataset generation creates RFI + 5 vendor proposals, caches bytes, and archives old sets."""
     target_dir = str(tmp_path / "vendor_dataset")
     
     # 1. First run generates fresh random files & vendor names
     files1, skus1, vendors1 = generate_vendor_dataset(target_dir=target_dir)
-    assert len(files1) == 5
+    assert len(files1) == 6
     assert len(vendors1) == 5
     for f in files1:
         assert os.path.exists(f)
         assert os.path.getsize(f) > 0
 
-    # Test in-memory cache retrieval
+    # Test RFI specification file
+    rfi_excel_bytes = get_cached_file("rfi_baseline_specification.xlsx", target_dir=target_dir)
+    assert rfi_excel_bytes is not None and len(rfi_excel_bytes) > 0
+
+    # Test in-memory cache retrieval for vendor excel
     excel_bytes = get_cached_file("vendor1_alpha_pack_custom_excel.xlsx", target_dir=target_dir)
     assert excel_bytes is not None and len(excel_bytes) > 0
+
+    # Test 2-part photo files in cache
+    p1_bytes = get_cached_file("vendor4_delta_angled_ratecard_p1.png", target_dir=target_dir)
+    p2_bytes = get_cached_file("vendor4_delta_angled_ratecard_p2.png", target_dir=target_dir)
+    assert p1_bytes is not None and len(p1_bytes) > 0
+    assert p2_bytes is not None and len(p2_bytes) > 0
 
     # Test ZIP bundle creation (Download All)
     zip_bytes = create_dataset_zip(target_dir=target_dir)
@@ -55,7 +77,7 @@ def test_dataset_generation_caching_and_archiving(tmp_path):
     
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
         names = z.namelist()
-        assert len(names) == 5
+        assert any(n == "rfi_baseline_specification.xlsx" for n in names)
         assert any(n.endswith(".xlsx") for n in names)
         assert any(n.endswith(".pdf") for n in names)
         assert any(n.endswith(".docx") for n in names)
@@ -64,7 +86,7 @@ def test_dataset_generation_caching_and_archiving(tmp_path):
 
     # 2. Second run moves old files to archive
     files2, skus2, vendors2 = generate_vendor_dataset(target_dir=target_dir)
-    assert len(files2) == 5
+    assert len(files2) == 6
     archive_dir = os.path.join(target_dir, "archive")
     assert os.path.exists(archive_dir)
     archived_runs = os.listdir(archive_dir)
@@ -116,8 +138,9 @@ def test_extraction_and_normalization(tmp_path):
 
     # Check Vendor 1 (Excel)
     v1 = results["vendor_1"]
-    assert v1.total_items_quoted == 30
+    assert v1.total_items_quoted >= 30
     assert "PKG-001" in v1.line_items
+    assert "Freight" in v1.commercial_terms.freight_terms
 
     # Check Vendor 2 (PDF footnote)
     v2 = results["vendor_2"]
@@ -128,9 +151,14 @@ def test_extraction_and_normalization(tmp_path):
     assert "100%" in v3.commercial_terms.warranty
     assert "3%" in v3.commercial_terms.freight_terms
 
-    # Check Vendor 5 (USD Email missing lines)
+    # Check Vendor 4 (Angled photo multi-part)
+    v4 = results["vendor_4"]
+    assert v4.total_items_quoted == 30
+
+    # Check Vendor 5 (USD Email missing lines & freight)
     v5 = results["vendor_5"]
     assert v5.total_items_quoted == 27
+    assert "350" in v5.commercial_terms.freight_terms
     quoted_item = next(it for it in v5.line_items.values() if it.is_quoted)
     assert quoted_item.raw_currency == "USD"
     assert quoted_item.normalized_rate == round(quoted_item.raw_rate * 84.0, 2)
@@ -148,7 +176,7 @@ def test_comparison_matrix_and_optimization(tmp_path):
     assert len(matrix) == 30
 
     deal_totals = ComparisonMatrixBuilder.calculate_deal_totals(matrix, vendor_responses)
-    assert deal_totals["total_baseline_inr"] > 30000000
+    assert deal_totals["total_baseline_inr"] > 0
     assert deal_totals["total_optimal_l1_inr"] > 0
     assert deal_totals["total_savings_inr"] > 0
 

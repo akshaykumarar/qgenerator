@@ -117,6 +117,7 @@ with st.sidebar:
 dataset_dir = settings.dataset_dir
 if "vendor_data" not in st.session_state or "dataset_generated" not in st.session_state:
     expected_files = [
+        "rfi_baseline_specification.xlsx",
         "vendor1_alpha_pack_custom_excel.xlsx",
         "vendor2_beta_box_clean_table.pdf",
         "vendor3_gamma_packaging_prose.docx",
@@ -155,10 +156,11 @@ st.markdown(get_header_html(f"{selected_provider.upper()}: {selected_model}", is
 # ---------------------------------------------------------------------------
 # 5. DATASET GENERATION CONTROL PANEL (COLLAPSIBLE)
 # ---------------------------------------------------------------------------
-with st.expander("📦 5-Vendor Multi-Format Dataset Controls & Custom Scenario Generator", expanded=True):
+with st.expander("📦 6-File RFx Baseline Specification & 5-Vendor Multi-Format Dataset Generator", expanded=True):
     st.markdown("""
-    Generate fresh synthetic RFx responses across 5 distinct unstructured file formats (Excel, PDF, Word, Angled Image, USD Email) 
-    for the **30-SKU Packaging Consumables Catalog**.
+    Generate synchronous RFx documents: **Master RFI Baseline Specification** (Excel/Prompt) plus **5 Multi-Format Vendor Proposals** 
+    (Excel, PDF, Word, 2-Part Angled Images, USD Email) with realistic noise (MOQs, BOQ variances, freight, duplicates, missing lines, USD pricing) 
+    for the **30-SKU Packaging Consumables Catalog** (Order volumes: 50 - 500 units, standard UOMs: Kg, Metre, Piece, Roll, Pack).
     """)
 
     col_input, col_btn = st.columns([3, 1.2])
@@ -170,11 +172,11 @@ with st.expander("📦 5-Vendor Multi-Format Dataset Controls & Custom Scenario 
         )
     with col_btn:
         st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-        btn_label = "⚡ Apply Feedback to Existing Data" if feedback_prompt.strip() else "🚀 Generate Fresh 5-Vendor Dataset"
+        btn_label = "⚡ Apply Feedback to Existing Data" if feedback_prompt.strip() else "🚀 Generate Fresh 6-File RFx Dataset"
         trigger_gen = st.button(btn_label, type="primary", use_container_width=True)
 
     if trigger_gen:
-        with st.spinner("Generating 5 multi-format vendor proposals and extracting data..."):
+        with st.spinner("Generating master RFI and 5 multi-format vendor proposals..."):
             prior_skus = st.session_state.get("active_skus")
             prior_vendors = st.session_state.get("active_vendors")
 
@@ -199,7 +201,7 @@ with st.expander("📦 5-Vendor Multi-Format Dataset Controls & Custom Scenario 
             if feedback_prompt.strip() and prior_skus:
                 st.success(f"✓ Modified existing dataset with feedback: '{feedback_prompt}' (Active SKUs updated)")
             else:
-                st.success(f"✓ Generated fresh random dataset across 5 new vendor profiles: {', '.join(list(new_vendors.values())[:3])}...")
+                st.success(f"✓ Generated fresh synchronous RFx dataset: Master RFI + 5 Vendor proposals ({', '.join(list(new_vendors.values())[:3])}...)")
 
     # Display live file badges with individual download buttons
     render_file_badges(dataset_dir=dataset_dir)

@@ -3,13 +3,14 @@ platform darwin -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- /Users/akshaykum
 cachedir: .pytest_cache
 rootdir: /Users/akshaykumar/code/qgenerator
 plugins: anyio-4.15.1
-collecting ... collected 6 items
+collecting ... collected 7 items
 
-tests/test_procurement_engine.py::test_settings_multi_provider_dynamic PASSED [ 16%]
-tests/test_procurement_engine.py::test_dataset_generation_caching_and_archiving PASSED [ 33%]
-tests/test_procurement_engine.py::test_feedback_vs_random_generation PASSED [ 50%]
-tests/test_procurement_engine.py::test_extraction_and_normalization PASSED [ 66%]
-tests/test_procurement_engine.py::test_comparison_matrix_and_optimization PASSED [ 83%]
+tests/test_procurement_engine.py::test_settings_multi_provider_dynamic PASSED [ 14%]
+tests/test_procurement_engine.py::test_sku_catalog_order_volumes_and_uoms PASSED [ 28%]
+tests/test_procurement_engine.py::test_dataset_generation_caching_and_archiving PASSED [ 42%]
+tests/test_procurement_engine.py::test_feedback_vs_random_generation PASSED [ 57%]
+tests/test_procurement_engine.py::test_extraction_and_normalization PASSED [ 71%]
+tests/test_procurement_engine.py::test_comparison_matrix_and_optimization PASSED [ 85%]
 tests/test_procurement_engine.py::test_copilot_interrogation PASSED      [100%]
 
 =============================== warnings summary ===============================
@@ -18,4 +19,4 @@ tests/test_procurement_engine.py::test_copilot_interrogation PASSED      [100%]
     VersionedUnionType = Union[builtin_types.UnionType, _UnionGenericAlias]
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-========================= 6 passed, 1 warning in 3.07s =========================
+========================= 7 passed, 1 warning in 3.92s =========================
